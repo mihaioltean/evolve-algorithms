@@ -1,16 +1,24 @@
 //---------------------------------------------------------------------------
 //   Multi Expression Programming for evolving Evolutionary Algorithms
 //   Copyright (C) 2002-2016, Mihai Oltean  (mihai.oltean@gmail.com)
-//   Version 2016.11.22.0
+//   Version 2016.11.30.0
 
 //   Compiled with Microsoft Visual C++ 2013
 //   Just create a console application and set this file as the main file of the project
 
 //   MIT License
 
-//   New versions of this program will be available at: 
+//   Paper to read:
 
-//   Please reports any sugestions and/or bugs to       
+//   Oltean Mihai, Grosan C., 
+//   Evolving Evolutionary Algorithms using Multi Expression Programming, 
+//   The 7th European Conference on Artificial Life, 
+//   Dortmund, Edited by W.Banzhaf(et al), LNAI 2801, pp. 651 - 658, Springer - Verlag, Berlin, 2003.
+
+
+//   New versions of this program will be available at: https://github.com/mihaioltean/evolve-algorithms
+
+//   Please reports any sugestions and/or bugs to  mihai.oltean@gmail.com 
 
 
 
@@ -279,7 +287,9 @@ void compute_fitness(t_meta_gp_chromosome &an_individual, int code_length, t_mic
 					for (int k = 0; k < micro_params.num_bits_per_dimension; k++) {
 						double p = rand() / (double)RAND_MAX;
 						if (p < micro_params.mutation_probability)
-							micro_values[i][j * micro_params.num_bits_per_dimension + k] = 1 - micro_values[i][j * micro_params.num_bits_per_dimension + k];
+							micro_values[i][j * micro_params.num_bits_per_dimension + k] = 1 - micro_values[an_individual.prg[i].adr1][j * micro_params.num_bits_per_dimension + k];
+						else
+							micro_values[i][j * micro_params.num_bits_per_dimension + k] = micro_values[an_individual.prg[i].adr1][j * micro_params.num_bits_per_dimension + k];
 					}
 
 				// compute fitness of that micro chromosome
@@ -395,10 +405,10 @@ int main(void)
 {
 	t_meta_gp_parameters meta_gp_params;
 
-	meta_gp_params.pop_size = 10;						    // the number of individuals in population  (must be an even number!)
-	meta_gp_params.code_length = 50;
-	meta_gp_params.num_generations = 100;					// the number of generations
-	meta_gp_params.mutation_probability = 0.1;              // mutation probability
+	meta_gp_params.pop_size = 10;						    // the number of individuals in population
+	meta_gp_params.code_length = 100;
+	meta_gp_params.num_generations = 1000;					// the number of generations
+	meta_gp_params.mutation_probability = 0.01;              // mutation probability
 	meta_gp_params.crossover_probability = 0.9;             // crossover probability
 
 	t_micro_ea_parameters micro_ea_params;
