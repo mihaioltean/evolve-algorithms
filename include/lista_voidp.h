@@ -30,6 +30,7 @@ class TLista{
 
 	void* GetCurrentInfo(node_double_linked* p);
 	void* GetHeadInfo(void);
+	void* GetTailInfo(void);
 
 	void* GetNextInfo(node_double_linked*);
 	void* GetPrevInfo(node_double_linked*);
