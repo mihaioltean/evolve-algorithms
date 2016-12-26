@@ -140,10 +140,10 @@ void uniform_crossover(const t_meta_gp_chromosome &parent1, const t_meta_gp_chro
 //---------------------------------------------------------------------------
 int sort_function(const void *a, const void *b)
 {// comparator for quick sort
-	if (((t_meta_gp_chromosome *)a)->fitness > ((t_meta_gp_chromosome *)b)->fitness)
+	if (((t_meta_gp_chromosome *)a)->fitness < ((t_meta_gp_chromosome *)b)->fitness)
 		return 1;
 	else
-		if (((t_meta_gp_chromosome *)a)->fitness < ((t_meta_gp_chromosome *)b)->fitness)
+		if (((t_meta_gp_chromosome *)a)->fitness > ((t_meta_gp_chromosome *)b)->fitness)
 			return -1;
 		else
 			return 0;
@@ -230,12 +230,41 @@ bool dominates(double* p1, double* p2) // returns true if p1 dominates p2
 	return false;
 }
 //---------------------------------------------------------------------------
-inline double euclidian_distance(double* p1, double* p2)
+void sort_list(TLista &nondominated)
 {
-	return sqrt((p1[0] - p2[0]) * (p1[0] - p2[0]) + (p1[1] - p2[1]) * (p1[1] - p2[1]));
+	bool sorted = false;
+	while (!sorted) {
+		sorted = true;
+		for (node_double_linked * node_p = nondominated.head; node_p->next; node_p = node_p->next) {
+			double *p = (double*)nondominated.GetCurrentInfo(node_p);
+			double *p_next = (double*)nondominated.GetCurrentInfo(node_p->next);
+			if (p[0] > p_next[0]) {
+				void *tmp_inf = node_p->inf;
+				node_p->inf = node_p->next->inf;
+				node_p->next->inf = tmp_inf;
+				sorted = false;
+			}
+		}
+	}
 }
 //---------------------------------------------------------------------------
-double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micro_ea_parameters &micro_params, int num_dimensions, double min_x, double max_x, double** reference_points, int num_reference_points, double **micro_fitness, char **micro_values, double *x, FILE *f)
+double compute_hypervolume(TLista &nondominated, double *reference)
+{
+	sort_list(nondominated);
+
+	double hyper_volume = 0;
+	for (node_double_linked * node_p = nondominated.head; node_p->next; node_p = node_p->next) {
+		double *p = (double*)nondominated.GetCurrentInfo(node_p);
+		double *p_next = (double*)nondominated.GetCurrentInfo(node_p->next);
+		hyper_volume += (p_next[0] - p[0]) * (reference[1] - p[1]);
+	}
+	double *p = (double*)nondominated.GetTailInfo();
+	hyper_volume += (reference[0] - p[0]) * (reference[1] - p[1]);
+
+	return hyper_volume;
+}
+//---------------------------------------------------------------------------
+double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micro_ea_parameters &micro_params, int num_dimensions, double min_x, double max_x, double **micro_fitness, char **micro_values, double *x, FILE *f)
 {
 	for (int i = 0; i < code_length; i++) {
 		switch (an_individual.prg[i].op) {
@@ -333,24 +362,14 @@ double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micr
 	}
 
 	// compute the distance to front
-	double hyper_volume = 0;
-	for (node_double_linked * node_p = nondominated.head; node_p; node_p = node_p->next) {
-		double *p = (double*)nondominated.GetCurrentInfo(node_p);
-		double min_dist = euclidian_distance(p, reference_points[0]);
-		for (int j = 1; j < num_reference_points; j++) {
-			double dist = euclidian_distance(p, reference_points[j]);
-			if (dist < min_dist)
-				min_dist = dist;
-		}
-		hyper_volume += min_dist;
-	}
+	double reference[2] = { 11, 11 };
 
-	hyper_volume /= (double)nondominated.count;
+	double hyper_volume = compute_hypervolume(nondominated, reference);
 
 	if (f) {
 		fprintf(f, "%lf\n", hyper_volume);
 		fprintf(f, "%d\n", nondominated.count);
-		for (node_double_linked * node_p = nondominated.head; node_p; node_p = node_p->next) {
+		for (node_double_linked* node_p = nondominated.head; node_p; node_p = node_p->next) {
 			double *p = (double*)nondominated.GetCurrentInfo(node_p);
 			fprintf(f, "%lf %lf ", p[0], p[1]);
 		}
@@ -360,13 +379,13 @@ double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micr
 	return hyper_volume;
 }
 //---------------------------------------------------------------------------
-void compute_fitness(t_meta_gp_chromosome &an_individual, int code_length, t_micro_ea_parameters &micro_params, int num_dimensions, double min_x, double max_x, double** reference_points, int num_reference_points, double **micro_fitness, char **micro_values, double *x, FILE *f)
+void compute_fitness(t_meta_gp_chromosome &an_individual, int code_length, t_micro_ea_parameters &micro_params, int num_dimensions, double min_x, double max_x, double **micro_fitness, char **micro_values, double *x, FILE *f)
 {
 	double average_hypervolume = 0;  // average fitness over all runs
 	// evaluate code
 	for (int r = 0; r < micro_params.num_runs; r++) {// micro ea is run on multi runs
 		srand(r);
-		double hyper_volume = make_one_run(an_individual, code_length, micro_params, num_dimensions, min_x, max_x, reference_points, num_reference_points, micro_fitness, micro_values, x, f);
+		double hyper_volume = make_one_run(an_individual, code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, f);
 		// add to average
 		average_hypervolume += hyper_volume;
 	}
@@ -377,7 +396,7 @@ void compute_fitness(t_meta_gp_chromosome &an_individual, int code_length, t_mic
 	an_individual.fitness = average_hypervolume;
 }
 //---------------------------------------------------------------------------
-void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_parameters &micro_params, int num_dimensions, double min_x, double max_x, double** reference_points, int num_reference_points, FILE *f_out)       // Steady-State 
+void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_parameters &micro_params, int num_dimensions, double min_x, double max_x, FILE *f_out)       // Steady-State 
 {
 	// a steady state approach:
 	// we work with 1 population
@@ -410,7 +429,7 @@ void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_par
 	// initialize
 	for (int i = 0; i < meta_gp_params.pop_size; i++) {
 		generate_random_meta_chromosome(population[i], meta_gp_params);
-		compute_fitness(population[i], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, reference_points, num_reference_points, micro_fitness, micro_values, x, NULL);
+		compute_fitness(population[i], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, NULL);
 	}
 	// sort ascendingly by fitness
 	qsort((void *)population, meta_gp_params.pop_size, sizeof(population[0]), sort_function);
@@ -419,7 +438,7 @@ void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_par
 	// print the front of the best
 	fprintf(f_out, "%d\n", 0);
 	srand(0);
-	make_one_run(population[0], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, reference_points, num_reference_points, micro_fitness, micro_values, x, f_out);
+	make_one_run(population[0], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, f_out);
 
 	for (int g = 1; g < meta_gp_params.num_generations; g++) {// for each generation
 		for (int k = 0; k < meta_gp_params.pop_size; k += 2) {
@@ -436,26 +455,26 @@ void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_par
 			}
 			// mutate the result and compute fitness
 			mutate_meta_chromosome(offspring1, meta_gp_params);
-			compute_fitness(offspring1, meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, reference_points, num_reference_points, micro_fitness, micro_values, x, NULL);
+			compute_fitness(offspring1, meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, NULL);
 			// mutate the other offspring and compute fitness
 			mutate_meta_chromosome(offspring2, meta_gp_params);
-			compute_fitness(offspring2, meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, reference_points, num_reference_points, micro_fitness, micro_values, x, NULL);
+			compute_fitness(offspring2, meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, NULL);
 
 			// replace the worst in the population
-			if (offspring1.fitness < population[meta_gp_params.pop_size - 1].fitness) {
+			if (offspring1.fitness > population[meta_gp_params.pop_size - 1].fitness) {
 				copy_individual(population[meta_gp_params.pop_size - 1], offspring1, meta_gp_params);
 				qsort((void *)population, meta_gp_params.pop_size, sizeof(population[0]), sort_function);
 			}
-			if (offspring2.fitness < population[meta_gp_params.pop_size - 1].fitness) {
+			if (offspring2.fitness > population[meta_gp_params.pop_size - 1].fitness) {
 				copy_individual(population[meta_gp_params.pop_size - 1], offspring2, meta_gp_params);
 				qsort((void *)population, meta_gp_params.pop_size, sizeof(population[0]), sort_function);
 			}
 		}
-		printf("generation %d, best fitness = %lf\n", g, population[0].fitness);
 		// print the front of the best
 		fprintf(f_out, "%d\n", g);
 		srand(0);
-		make_one_run(population[0], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, reference_points, num_reference_points, micro_fitness, micro_values, x, f_out);
+		make_one_run(population[0], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, f_out);
+		printf("generation %d, best fitness = %lf\n", g, population[0].fitness);
 
 	}
 	// print best chromosome
@@ -482,7 +501,7 @@ void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_par
 
 }
 //--------------------------------------------------------------------
-bool read_reference_points(char *file_name, double **reference_points)
+bool read_reference_points(char *file_name, TLista &reference_points)
 {
 	FILE * f = fopen(file_name, "r");
 
@@ -490,8 +509,11 @@ bool read_reference_points(char *file_name, double **reference_points)
 		return false;
 
 	char c;
-	for (int i = 0; i < 100; i++)
-		fscanf(f, "%lf%c%lf", &reference_points[i][0], &c, &reference_points[i][1]);
+	for (int i = 0; i < 100; i++) {
+		double *p = new double[2];
+		fscanf(f, "%lf%c%lf", &p[0], &c, &p[1]);
+		reference_points.Add(p);
+	}
 
 	fclose(f);
 	return true;
@@ -511,28 +533,37 @@ int main(void)
 	micro_ea_params.mutation_probability = 0.01;
 	micro_ea_params.num_bits_per_dimension = 30;
 	micro_ea_params.num_runs = 30;
-
+	/*
 	int num_reference_points = 100;
 
-	double **reference_points = new double*[100];
-	for (int i = 0; i < num_reference_points; i++)
-		reference_points[i] = new double[2];
+	TLista reference_points;
 
 	if (!read_reference_points("c:\\Mihai\\Dropbox\\evolve-algorithms\\data\\zdt1_100.txt", reference_points)) {
 		printf("Cannot read input file!");
 		return 1;
 	}
+	double reference_point[2] = { 11, 11 };
+	double hypervolume = compute_hypervolume(reference_points, reference_point);
+
+	printf("hypervolume = %lf\n", hypervolume);
+
+	while (reference_points.head) {
+		double *p = (double*)reference_points.GetHeadInfo();
+		delete[] p;
+		reference_points.DeleteHead();
+	}
+	*/
+
+	
 
 	FILE *f_out = fopen("c:\\temp\\zdt1_front.txt", "w");
 
+	printf("evolution started...\n");
 	srand(0);
-	start_steady_state_mep(meta_gp_params, micro_ea_params, 30, 0, 1, reference_points, num_reference_points, f_out);
+	start_steady_state_mep(meta_gp_params, micro_ea_params, 30, 0, 1, f_out);
 
 	fclose(f_out);
-
-	for (int i = 0; i < num_reference_points; i++)
-		delete[] reference_points[i];
-	delete[] reference_points;
+	
 
 	printf("Press enter ...");
 	getchar();
