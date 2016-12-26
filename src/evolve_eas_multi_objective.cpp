@@ -1,16 +1,16 @@
 //---------------------------------------------------------------------------
-//   Multi Expression Programming for evolving Evolutionary Algorithms for MultiObjective problems
-//   Copyright (C) 2002-2016, Mihai Oltean  (mihai.oltean@gmail.com)
-//   Version 2016.11.22.0
+//   Evolving Evolutionary Algorithms for MultiObjective problems
+//   Copyright (C) 2016, Mihai Oltean  (mihai.oltean@gmail.com)
+//   Version 2016.12.26.1
 
 //   Compiled with Microsoft Visual C++ 2013
 //   Just create a console application and set this file as the main file of the project
 
 //   MIT License
 
-//   New versions of this program will be available at: 
+//   New versions of this program will be available at: https://github.com/mihaioltean/evolve-algorithms
 
-//   Please reports any sugestions and/or bugs to       
+//   Please reports any sugestions and/or bugs to mihai.oltean@gmail.com
 
 
 
@@ -52,6 +52,7 @@ struct t_micro_ea_parameters{
 	double mutation_probability;
 	int num_runs;
 	int num_bits_per_dimension;
+	int initial_pop_size;
 };
 //---------------------------------------------------------------------------
 void allocate_meta_chromosome(t_meta_gp_chromosome &c, t_meta_gp_parameters &params)
@@ -74,32 +75,35 @@ void copy_individual(t_meta_gp_chromosome& dest, const t_meta_gp_chromosome& sou
 	dest.fitness = source.fitness;
 }
 //---------------------------------------------------------------------------
-void generate_random_meta_chromosome(t_meta_gp_chromosome &a, t_meta_gp_parameters &params) // randomly initializes the individuals
+void generate_random_meta_chromosome(t_meta_gp_chromosome &a, t_meta_gp_parameters &meta_gp_params, int micro_ea_pop_size) // randomly initializes the individuals
 {
-	a.prg[0].op = MICRO_EA_RANDOM_INIT; // init only
-
+	for (int i = 0; i < micro_ea_pop_size; i++) {
+		a.prg[i].op = MICRO_EA_RANDOM_INIT; // generate a random solution
+		a.prg[i].adr1 = -1;
+		a.prg[i].adr2 = -1;
+	}
 	// for all other genes we put either an operator, variable or constant
-	for (int i = 1; i < params.code_length; i++) {
-		a.prg[i].op = rand() % NUM_MICRO_EA_OPERATORS;
+	for (int i = micro_ea_pop_size; i < meta_gp_params.code_length; i++) {
+		a.prg[i].op = 1 + rand() % (NUM_MICRO_EA_OPERATORS - 1);
 
 		a.prg[i].adr1 = rand() % i;
 		a.prg[i].adr2 = rand() % i;
 	}
 }
 //---------------------------------------------------------------------------
-void mutate_meta_chromosome(t_meta_gp_chromosome &a_chromosome, t_meta_gp_parameters& params) // mutate the individual
+void mutate_meta_chromosome(t_meta_gp_chromosome &a_chromosome, t_meta_gp_parameters& params, int micro_ea_pop_size) // mutate the individual
 {
 	// mutate each symbol with the given probability
-	// no mutation for the first gene
+	// no mutation for the first micro_ea_pop_size genes because they are only used for initialization of the micro ea population
 	// other genes
 
-	for (int i = 1; i < params.code_length; i++) {
+	for (int i = micro_ea_pop_size; i < params.code_length; i++) {
 		double p = rand() / (double)RAND_MAX;      // mutate the operator
 		if (p < params.mutation_probability) {
 			// we mutate it, but we have to decide what we put here
 			p = rand() / (double)RAND_MAX;
 
-			a_chromosome.prg[i].op = rand() % NUM_MICRO_EA_OPERATORS;
+			a_chromosome.prg[i].op = 1 + rand() % (NUM_MICRO_EA_OPERATORS - 1);
 		}
 
 		p = rand() / (double)RAND_MAX;      // mutate the first address  (adr1)
@@ -162,10 +166,10 @@ void print_meta_chromosome(t_meta_gp_chromosome& an_individual, int code_length)
 			printf("%d: MICRO_EA_DOMINATOR_SELECTION(%d, %d)\n", i, an_individual.prg[i].adr1, an_individual.prg[i].adr2);
 			break;
 		case MICRO_EA_CROSSOVER:
-			printf("%d: MICRO_EA_CROSSOVER(%d)\n", i, an_individual.prg[i].adr1);
+			printf("%d: MICRO_EA_CROSSOVER(%d, %d)\n", i, an_individual.prg[i].adr1, an_individual.prg[i].adr2);
 			break;
 		case MICRO_EA_MUTATION:
-			printf("%d: MICRO_EA_MUTATION(%d, %d)\n", i, an_individual.prg[i].adr1, an_individual.prg[i].adr2);
+			printf("%d: MICRO_EA_MUTATION(%d)\n", i, an_individual.prg[i].adr1);
 			break;
 	}
 		
@@ -276,7 +280,7 @@ double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micr
 			// compute fitness of that micro chromosome
 			// transform to base 10
 			for (int j = 0; j < num_dimensions; j++)
-				x[j] = binary_to_real(micro_values[i], micro_params.num_bits_per_dimension, min_x, max_x);
+				x[j] = binary_to_real(micro_values[i] + j * micro_params.num_bits_per_dimension, micro_params.num_bits_per_dimension, min_x, max_x);
 
 			micro_fitness[i][0] = f1(x, num_dimensions);// apply f - compute fitness of micro
 			micro_fitness[i][1] = f2(x, num_dimensions);// apply f - compute fitness of micro
@@ -308,7 +312,7 @@ double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micr
 			// compute fitness of that micro chromosome
 			// transform to base 10
 			for (int j = 0; j < num_dimensions; j++)
-				x[j] = binary_to_real(micro_values[i], micro_params.num_bits_per_dimension, min_x, max_x);
+				x[j] = binary_to_real(micro_values[i] + j * micro_params.num_bits_per_dimension, micro_params.num_bits_per_dimension, min_x, max_x);
 
 			micro_fitness[i][0] = f1(x, num_dimensions);// apply f - compute fitness of micro
 			micro_fitness[i][1] = f2(x, num_dimensions);// apply f - compute fitness of micro
@@ -328,7 +332,7 @@ double make_one_run(t_meta_gp_chromosome &an_individual, int code_length, t_micr
 			// compute fitness of that micro chromosome
 			// transform to base 10
 			for (int j = 0; j < num_dimensions; j++)
-				x[j] = binary_to_real(micro_values[i], micro_params.num_bits_per_dimension, min_x, max_x);
+				x[j] = binary_to_real(micro_values[i] + j * micro_params.num_bits_per_dimension, micro_params.num_bits_per_dimension, min_x, max_x);
 
 			micro_fitness[i][0] = f1(x, num_dimensions);// apply f - compute fitness of micro
 			micro_fitness[i][1] = f2(x, num_dimensions);// apply f - compute fitness of micro
@@ -428,7 +432,7 @@ void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_par
 	
 	// initialize
 	for (int i = 0; i < meta_gp_params.pop_size; i++) {
-		generate_random_meta_chromosome(population[i], meta_gp_params);
+		generate_random_meta_chromosome(population[i], meta_gp_params, micro_params.initial_pop_size);
 		compute_fitness(population[i], meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, NULL);
 	}
 	// sort ascendingly by fitness
@@ -454,10 +458,10 @@ void start_steady_state_mep(t_meta_gp_parameters &meta_gp_params, t_micro_ea_par
 				copy_individual(offspring2, population[r2], meta_gp_params);
 			}
 			// mutate the result and compute fitness
-			mutate_meta_chromosome(offspring1, meta_gp_params);
+			mutate_meta_chromosome(offspring1, meta_gp_params, micro_params.initial_pop_size);
 			compute_fitness(offspring1, meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, NULL);
 			// mutate the other offspring and compute fitness
-			mutate_meta_chromosome(offspring2, meta_gp_params);
+			mutate_meta_chromosome(offspring2, meta_gp_params, micro_params.initial_pop_size);
 			compute_fitness(offspring2, meta_gp_params.code_length, micro_params, num_dimensions, min_x, max_x, micro_fitness, micro_values, x, NULL);
 
 			// replace the worst in the population
@@ -523,8 +527,8 @@ int main(void)
 {
 	t_meta_gp_parameters meta_gp_params;
 
-	meta_gp_params.pop_size = 100;						    // the number of individuals in population  (must be an even number!)
-	meta_gp_params.code_length = 1000;
+	meta_gp_params.pop_size = 10;						    // the number of individuals in population  (must be an even number!)
+	meta_gp_params.code_length = 10000;
 	meta_gp_params.num_generations = 100;					// the number of generations
 	meta_gp_params.mutation_probability = 0.01;              // mutation probability
 	meta_gp_params.crossover_probability = 0.9;             // crossover probability
@@ -533,28 +537,7 @@ int main(void)
 	micro_ea_params.mutation_probability = 0.01;
 	micro_ea_params.num_bits_per_dimension = 30;
 	micro_ea_params.num_runs = 30;
-	/*
-	int num_reference_points = 100;
-
-	TLista reference_points;
-
-	if (!read_reference_points("c:\\Mihai\\Dropbox\\evolve-algorithms\\data\\zdt1_100.txt", reference_points)) {
-		printf("Cannot read input file!");
-		return 1;
-	}
-	double reference_point[2] = { 11, 11 };
-	double hypervolume = compute_hypervolume(reference_points, reference_point);
-
-	printf("hypervolume = %lf\n", hypervolume);
-
-	while (reference_points.head) {
-		double *p = (double*)reference_points.GetHeadInfo();
-		delete[] p;
-		reference_points.DeleteHead();
-	}
-	*/
-
-	
+	micro_ea_params.initial_pop_size = 100;
 
 	FILE *f_out = fopen("c:\\temp\\zdt1_front.txt", "w");
 
